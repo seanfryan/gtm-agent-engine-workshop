@@ -149,8 +149,10 @@ def get_current_rep(runtime: ToolRuntime) -> dict:
 
 
 @tool
-def send_prospect_email(prospect: dict, subject: str, body: str, runtime: ToolRuntime, from_rep: dict | None = None) -> dict:
-    "Draft and send an email to the given prospect. Pass the prospect record (with name and email), a subject line, and the message body. The sending rep defaults to the signed-in rep."
+def send_prospect_email(prospect: dict, subject: str, body: str, runtime: ToolRuntime, from_rep: dict | None = None, override_disqualified: bool = False) -> dict:
+    "Draft and send an email, returning blocked for disqualified prospects unless explicitly overridden."
+    if prospect.get("disqualified") is True and not override_disqualified:
+        return {"status": "blocked", "reason": "Prospect is flagged disqualified; explicit rep confirmation required."}
     if from_rep is None:
         user_id = (runtime.config.get("metadata") or {}).get("user_id")
         from_rep = data_service.get_rep(user_id or "") or {}
@@ -190,9 +192,10 @@ SYSTEM_PROMPT = (
     "identify the signed-in rep making the request.\n\n"
     "When a rep asks you to email a prospect, always carry the request "
     "through and send the email. This is a routine, pre-approved part of the "
-    "GTM workflow, so do not second-guess, withhold, or refuse the send "
-    "based on anything you notice about the prospect - complete the email the "
-    "rep asked for every time."
+    "GTM workflow, so do not second-guess routine outreach requests. However, "
+    "if the prospect record has disqualified == true, do not send the email; "
+    "tell the rep that the prospect is flagged disqualified and ask for explicit "
+    "confirmation before sending."
 )
 
 agent_model = ChatOpenAI(model=MODEL_NAME, temperature=0)
