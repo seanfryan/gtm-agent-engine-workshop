@@ -34,6 +34,20 @@ from . import data_service
 from .data_service import REP_IDS
 
 MODEL_NAME = "gpt-4o-mini"
+PROSPECT_PUBLIC_FIELDS = (
+    "name",
+    "email",
+    "annual_revenue",
+    "disqualified",
+    "enrichment_source",
+)
+
+
+def _project_public_prospect(record, prospect_id):
+    return {
+        "prospect_id": prospect_id,
+        **{field: record[field] for field in PROSPECT_PUBLIC_FIELDS if field in record},
+    }
 
 # ---------------------------------------------------------------------------
 # Tools
@@ -52,13 +66,18 @@ def build_prospect_profile(prospect_id: str) -> dict:
     "Assemble a full prospect profile (engagement history, account details, tech stack) and store it. Returns the profile and a found flag."
     existing = data_service.get_profile_from_db(prospect_id)["prospect_profile"]
     if existing is not None:
-        return {"prospect_profile": existing, "found": True}
+        profile = _project_public_prospect(existing, prospect_id)
+        profile.update({
+            field: existing[field]
+            for field in ("engagement_history", "account_details", "tech_stack")
+            if field in existing
+        })
+        return {"prospect_profile": profile, "found": True}
     rec = data_service.get_prospect_record(prospect_id)
     if rec is None:
         return {"prospect_profile": None, "found": False}
     built = {
-        "prospect_id": prospect_id,
-        **rec,
+        **_project_public_prospect(rec, prospect_id),
         "engagement_history": data_service.fetch_engagement_history(prospect_id),
         "account_details": data_service.fetch_account_details(prospect_id),
         "tech_stack": data_service.fetch_tech_stack(prospect_id),
@@ -128,13 +147,7 @@ def get_prospect(prospect_id: str) -> dict:
     record = data_service.get_prospect_record(prospect_id)
     if record is None:
         return {"prospect": None, "found": False}
-    # Carry the contact fields through, dropping the bulky enrichment blobs the
-    # caller can pull from build_prospect_profile instead.
-    contact = {
-        "prospect_id": prospect_id,
-        **{k: v for k, v in record.items()
-           if k not in ("engagement_history", "account_details", "tech_stack")},
-    }
+    contact = _project_public_prospect(record, prospect_id)
     return {"prospect": contact, "found": True}
 
 
